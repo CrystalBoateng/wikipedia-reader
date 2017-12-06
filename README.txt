@@ -1,12 +1,9 @@
-wikipedia-reader
-version 1.0
-12/05/2017
-
+wikipedia-reader    version 1.0    12/05/2017
 
 
 SUMMARY
 --------------------
-wikipedia-reader is a program written in Python, to quickly tokenize wikipedia articles and other unstructured text in English. This will be part of a larger project on cognitive modelling, and therefore will NOT be updated as an independent project.
+wikipedia-reader is a program written in Python, to quickly tokenize wikipedia articles (and other unstructured text in English), and then pull the tokens into the current runtime. This will be part of a larger project on cognitive modelling, and therefore will NOT be updated as an independent project.
 
 Tokenization and lemmatization are performed by Textacy, which is built on the spaCy Python library. For more information on these, see https://textacy.readthedocs.io/en/stable/index.html or https://spacy.io/
 
