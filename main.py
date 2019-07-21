@@ -1,32 +1,17 @@
-#{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
-#{}
-#{}	@@		Load dependencies and global variables
-#{}
-#{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+# dependencies
+import textacy # to create docs/doc metadata, and to lemmatize and tokenize unstructured text
+import os # to read and write from disk
+import sys # to delete and reload python files
+import re # to parse html
+import json # to read doc metadata
+import uuid # to generate unique IDs for topics
+from operator import itemgetter # to sort lists of lists
 
-#load NLP dependencies
-import textacy #to create docs/doc metadata, and to lemmatize and tokenize unstructured text
-import os #to read and write from disk
-import sys #to delete and reload python files
-import re #to parse html
-import json #to read doc metadata
-import uuid #to generate unique IDs for topics
-from operator import itemgetter #to sort lists of lists
+# global variables
+absolute_filepath = os.path.dirname(__file__) # filepath of this script
+knowledgePriorityLevel = 1 # boolean used at runtime when run as an API
 
-#declare global variables
-absolute_filepath = os.path.dirname(__file__) #the filepath of this script.
-knowledgePriorityLevel = 1
-
-
-
-
-#{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
-#{}
-#{}	@@		Functions
-#{}
-#{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
-
-#General utilities
+# general utilities
 def generateUuid():
 	"""Generate a reasonably unique ID string based on date and time.
 	----------Dependencies:
@@ -35,13 +20,14 @@ def generateUuid():
 	----------Parameters:
 	None
 
-	----------Returns:
+	----------Return:
 	a string (e.g. '2017-11-26_9-13_85894b2f')
 	"""
 	from datetime import datetime
 	dateAndTime = datetime.now()
-	randomId = str(uuid.uuid4()) #generate a UUID
-	randomId = randomId[:8] #truncate it because 36 digits is too long
+	# generate a random id and truncate the 36 digits to 8
+	randomId = str(uuid.uuid4())[:8]
+	# create a string containing metadata and the random id
 	myUuid = "%s-%s-%s_%s-%s_%s" % (
 		str(dateAndTime.year),
 		str(dateAndTime.month),
@@ -61,13 +47,14 @@ def updateTopicsKnown():
 	----------Parameters:
 	None
 
-	----------Returns:
+	----------Return:
 	None (content is pushed straight to the global variable topicsKnown)
 	"""
-	#exec 'For each line of text, concat to string.' then exec 'exec of that string'.
-	exec("stringOfTopicsKnown = '' \nwith open ('topics_known.py', 'rt', encoding='utf8') as f:\n\tfor line in f:\n\t\tstringOfTopicsKnown+=line\nexec(stringOfTopicsKnown)")
+	# execute 'For each line of text, concatenate to string'.
+	# then execute 'exection of that string'.
+	exec("stringOfTopicsKnown = '' \nwith open('topics_known.py', 'rt', encoding='utf8') as f:\n\tfor line in f:\n\t\tstringOfTopicsKnown+=line\nexec(stringOfTopicsKnown)")
 def sortLists(myLists,index,order):
-    """Takes a list of lists. Returns it sorted by a given index.
+    """Take a list of lists. Return it sorted by a given index.
 	----------Dependencies:
 	from operator import itemgetter
 
@@ -76,19 +63,117 @@ def sortLists(myLists,index,order):
 	index (the index to sort by)
 	order Smallest-to-largest is Python's default. If that's not what you want, write 'largestToSmallest'
 
-	----------Returns:
-	the same list you passed in, but sorted.
+	----------Return:
+	the same list that was passed in, but sorted.
 	"""
-
     sortedLists = sorted(myLists, key=itemgetter(index))
     if order == "largestToSmallest":
     	sortedLists = list(reversed(sortedLists))
     return sortedLists
 
-#Reading
+# reading
+def parseHtml(input_array, source):
+	"""Parse a list of HTML strings and return the list with less markup.
+	This function is called only by loadHtml(). It should not be called directly.
+	----------Dependencies:
+	none
+
+	----------Parameters:
+	input_array (a list of strings. each string contains HTML.)
+
+	----------Return:
+	a list of strings containing few or no html tags
+	"""
+	output_array = []
+	for i in range(len(input_array)):
+		line = input_array[i]
+		# remove leading indentations.
+		line = re.sub("\t", "", str(line))
+		line = re.sub("  ", "", str(line))
+		# retain only content in titles, headers, and paragraph tags.
+		substringToKeep = None
+		if (line.startswith('<title>') or
+			line.startswith('<h1') or 
+			line.startswith( '</figure><h1') or 
+			line.startswith('<h2') or 
+			line.startswith( '</figure><h2') or 
+			line.startswith('<h3') or 
+			line.startswith('<h4') or 
+			line.startswith('<h5') or 
+			line.startswith('<h6') or 
+			line.startswith('<h7') or
+			line.startswith('<p>') or 
+			line.startswith('<p ') or 
+			line.startswith('</figure><p ')
+			):
+			substringToKeep = line
+		# if there's anything in substringToKeep, clean it up and append it.
+		if substringToKeep:
+			# remove attributes.
+			substringToKeep = re.sub(' action="[^\"]*"', "", substringToKeep) # remove action attributes
+			substringToKeep = re.sub(' action=\'[^\"]*\'', "", substringToKeep) # same, but with single-quotes
+			substringToKeep = re.sub(' alt="[^\"]*"', "", substringToKeep) # remove alt attributes
+			substringToKeep = re.sub(' alt=\'[^\"]*\'', "", substringToKeep) # same, but with single-quotes
+			substringToKeep = re.sub(' class="[^\"]*"', "", substringToKeep) # remove class attributes
+			substringToKeep = re.sub(' class=\'[^\"]*\'', "", substringToKeep) # same, but with single-quotes
+			substringToKeep = re.sub(' href="[^\"]*"', "", substringToKeep) # remove href attributes
+			substringToKeep = re.sub(' href=\'[^\"]*\'', "", substringToKeep) # same, but with single-quotes
+			substringToKeep = re.sub(' id="[^\"]*"', "", substringToKeep) # remove id attributes
+			substringToKeep = re.sub(' id=\'[^\"]*\'', "", substringToKeep) # same, but with single-quotes
+			substringToKeep = re.sub(' lang="[^\"]*"', "", substringToKeep) # remove lang attributes
+			substringToKeep = re.sub(' lang=\'[^\"]*\'', "", substringToKeep) # same, but with single-quotes
+			substringToKeep = re.sub(' title="[^\"]*"', "", substringToKeep) # remove title attributes
+			substringToKeep = re.sub(' title=\'[^\"]*\'', "", substringToKeep) # same, but with single-quotes
+			substringToKeep = re.sub(' style="[^\"]*"', "", substringToKeep) # remove style attributes
+			substringToKeep = re.sub(' style=\'[^\"]*\'', "", substringToKeep) # same, but with single-quotes
+			# remove certain opening tags.
+			substringToKeep = re.sub('\<.\>', "", substringToKeep) # all 1-character tags, incl. <p>
+			substringToKeep = re.sub('\<..\>', "", substringToKeep) # all 2-character tags, incl. <p>
+			substringToKeep = re.sub('\<...\>', "", substringToKeep) # all 3-character tags, incl. <p>
+			substringToKeep = re.sub('<span>', "", substringToKeep)
+			substringToKeep = re.sub('<strong>', "", substringToKeep)
+			# remove all closing tags.
+			substringToKeep = re.sub("<\/[^>]*>", "", substringToKeep) 
+			# clean up wikipedia pages in a specific way.
+			if source == "wikipedia":
+				substringToKeep = re.sub('\[.\]', "", substringToKeep) # delete 1-digit footnotes
+				substringToKeep = re.sub('\[..\]', "", substringToKeep) # delete 2-digit footnotes
+				substringToKeep = re.sub('\[...\]', "", substringToKeep) # delete 3-digit footnotes
+				substringToKeep = re.sub('\[....\]', "", substringToKeep) # delete 3-digit tags
+				substringToKeep = re.sub('\[citation', "", substringToKeep) # delete '[citation needed]'
+				substringToKeep = re.sub('\[citation need', "", substringToKeep) # delete '[citation needed]'
+				substringToKeep = re.sub('\[citation needed\]', "", substringToKeep) # delete '[citation needed]'
+				substringToKeep = re.sub('needed\]', "", substringToKeep) # delete '[citation needed]'
+				# delete useless headings.
+				if substringToKeep == (
+					"Contents\n" or 
+					"External links\n" or 
+					"Further reading\n" or 
+					"Navigation menu\n" or 
+					"References\n" or 
+					"See also\n" or 
+					"In other projects\n" or 
+					"Interaction\n" or
+					"Languages\n" or 
+					"More\n" or 
+					"Namespaces\n" or 
+					"Navigation\n" or 
+					"Notes\n" or 
+					"Personal tools\n" or 
+					"Print/export\n" or 
+					"Tools\n" or 
+					"Views\n" or 
+					"Works cited\n"
+				):
+					substringToKeep = ""
+			output_array.append(substringToKeep)
+	if output_array:
+		return output_array
+	else:
+		return ("BAD REQUEST\t\tNo content matched the criteria to push to temp_processing_text.txt.")
 def loadHtml(myURL,sourceToLoad="Unknown"):
-	"""Download HTML from a webpage and push the useful parts of the text to temp_processing_text.txt.
-	This function is called by read(). It should not be called directly.
+	"""Download and parse HTML from a webpage. Push to temp_processing_text.txt.
+	This function is only called by read(). It should not be called directly.
 	----------Dependencies:
 	import os, import sys, import re, absolute_filepath
 
@@ -96,143 +181,55 @@ def loadHtml(myURL,sourceToLoad="Unknown"):
 	myURL (a string. must begin with http:// or https://)
 	sourceToLoad (optional string)
 
-	----------Returns:
-	None (data is pushed directly to temp_processing_text.txt and temp_preprocessing_text.txt)
+	----------Return:
+	None (data is pushed directly to temp_processing_text.txt and 
+	temp_preprocessing_text.txt)
 	"""
-	#download webpage content and push to temp_preprocessing_text.txt
+	# download webpage content and push to temp_preprocessing_text.txt.
 	import urllib.request
 	with urllib.request.urlopen(myURL) as response:
 		urlContent = response.read()
-		# this can't be converted to a real string, until it's written to disk.
-		with open(absolute_filepath+'/temp_preprocessing_text.txt', 'wb') as f: #wb stands for write as 'bytes'
+		# write content to disk so that it can be converted to a real string.
+		with open(absolute_filepath+'/temp_preprocessing_text.txt', 'wb') as f:
 		    f.write(urlContent)
-	del urlContent #save some memory
-
-	#Pull from temp_preprocessing_text.txt
+	# pull the content from temp_preprocessing_text.txt
 	urlContent_raw = []
-	with open ('temp_preprocessing_text.txt', 'rt', encoding="utf8") as f:
-	    for line in f: #For each line of text, store in a string variable in the list urlContent_raw.
+	with open('temp_preprocessing_text.txt', 'rt', encoding="utf8") as f:
+	    for line in f:
 	    	urlContent_raw.append(line)
-	assert len(urlContent_raw) > 0, "Hey, there is no content to pull from temp_preprocessing_text.txt"
-
-	#Parse the HTML 
-	urlContent_ready = []
-	for i in range (0,len(urlContent_raw)):
-		line = urlContent_raw[i]
-		#remove leading indentations
-		line = re.sub("\t", "", str(line))
-		line = re.sub("  ", "", str(line))
-
-		# Sort out what to keep.
-		substringToKeep = None
-			#keep titles
-		if line[:5] == '<title>': #maybe try line.find instead, for reuters
-			substringToKeep = line
-			#keep headers
-		elif line[:3] == '<h1' or line[:12] == '</figure><h1' or line[:3] == '<h2' or line[:12] == '</figure><h2' or line[:3] == '<h3' or line[:3] == '<h4' or line[:3] == '<h5' or line[:3] == '<h6' or line[:3] == '<h7':
-			substringToKeep = line
-			#keep paragraphs
-		# print(line.find('<p '),line.find('<p>')) # for debugging reuters articles
-		elif line[:3] == '<p>' or line[:3] == '<p ' or line[:12] == '</figure><p ': #for wikipedia articles
-		# if line.find('<p ')>0 or line.find('<p>')>0: #for reuters articles
-			substringToKeep = line
-			# print(line)
-		# #keep ul, ol, and li
-		# elif line[:4] == '<ul>' or line[:4] == '<ul ' or line[:4] == '<ol>' or line[:4] == '<ol ' or line[:4] == '<li>' or line[:4] == '<li ':
-		# 	substringToKeep = line
-		# #keep tables, tr, td
-		# elif line[:4] == '<table>' or line[:4] == '<table ' or line[:4] == '<tr>' or line[:4] == '<tr ' or line[:4] == '<td>' or line[:4] == '<td ':
-		# 	substringToKeep = line
-		else:
-			pass #don't keep anything else.
-		
-		# If there's anything in substringToKeep, clean it up and append it.
-		if substringToKeep != None:
-			# print("I identified a line to keep.")
-
-			#remove attributes
-			substringToKeep = re.sub(' action="[^\"]*"', "", substringToKeep) #remove action attributes
-			substringToKeep = re.sub(' action=\'[^\"]*\'', "", substringToKeep) #same, but with single-quotes
-			substringToKeep = re.sub(' alt="[^\"]*"', "", substringToKeep) #remove alt attributes
-			substringToKeep = re.sub(' alt=\'[^\"]*\'', "", substringToKeep) #same, but with single-quotes
-			substringToKeep = re.sub(' class="[^\"]*"', "", substringToKeep) #remove class attributes
-			substringToKeep = re.sub(' class=\'[^\"]*\'', "", substringToKeep) #same, but with single-quotes
-			substringToKeep = re.sub(' href="[^\"]*"', "", substringToKeep) #remove href attributes
-			substringToKeep = re.sub(' href=\'[^\"]*\'', "", substringToKeep) #same, but with single-quotes
-			substringToKeep = re.sub(' id="[^\"]*"', "", substringToKeep) #remove id attributes
-			substringToKeep = re.sub(' id=\'[^\"]*\'', "", substringToKeep) #same, but with single-quotes
-			substringToKeep = re.sub(' lang="[^\"]*"', "", substringToKeep) #remove lang attributes
-			substringToKeep = re.sub(' lang=\'[^\"]*\'', "", substringToKeep) #same, but with single-quotes
-			substringToKeep = re.sub(' title="[^\"]*"', "", substringToKeep) #remove title attributes
-			substringToKeep = re.sub(' title=\'[^\"]*\'', "", substringToKeep) #same, but with single-quotes
-			substringToKeep = re.sub(' style="[^\"]*"', "", substringToKeep) #remove style attributes
-			substringToKeep = re.sub(' style=\'[^\"]*\'', "", substringToKeep) #same, but with single-quotes
-			#remove certain opening tags
-			substringToKeep = re.sub('\<.\>', "", substringToKeep) #all 1-character tags, incl. <p>
-			substringToKeep = re.sub('\<..\>', "", substringToKeep) #all 2-character tags, incl. <p>
-			substringToKeep = re.sub('\<...\>', "", substringToKeep) #all 3-character tags, incl. <p>
-			substringToKeep = re.sub('<span>', "", substringToKeep)
-			substringToKeep = re.sub('<strong>', "", substringToKeep)
-			#remove ALL closing tags
-			substringToKeep = re.sub("<\/[^>]*>", "", substringToKeep) 
-
-			#clean up specific websites in a specific way
-			if sourceToLoad == "wikipedia": #If it's wikipedia...
-				substringToKeep = re.sub('\[.\]', "", substringToKeep) #delete 1-digit footnotes
-				substringToKeep = re.sub('\[..\]', "", substringToKeep) #delete 2-digit footnotes
-				substringToKeep = re.sub('\[...\]', "", substringToKeep) #delete 3-digit footnotes
-				substringToKeep = re.sub('\[....\]', "", substringToKeep) #delete 3-digit tags
-				substringToKeep = re.sub('\[citation', "", substringToKeep) #delete [citation needed] Note: this is not currently working - try printing the line here, to fix.
-				substringToKeep = re.sub('\[citation need', "", substringToKeep) #same
-				substringToKeep = re.sub('\[citation needed\]', "", substringToKeep) #same
-				substringToKeep = re.sub('needed\]', "", substringToKeep) #same
-				#delete these suseless headings:
-				if substringToKeep == "Contents\n" or substringToKeep == "External links\n" or substringToKeep == "Further reading\n" or substringToKeep == "Navigation menu\n" or substringToKeep == "References\n" or substringToKeep == "See also\n" or substringToKeep == "In other projects\n" or substringToKeep == "Interaction\n":
-					substringToKeep = ""
-				elif substringToKeep == "Languages\n" or substringToKeep == "More\n" or substringToKeep == "Namespaces\n" or substringToKeep == "Navigation\n" or substringToKeep == "Notes\n" or substringToKeep == "Personal tools\n" or substringToKeep == "Print/export\n" or substringToKeep == "Tools\n" or substringToKeep == "Views\n" or substringToKeep == "Works cited\n":
-					substringToKeep = ""
-				else:
-					pass
-			if sourceToLoad == "bbc" and i == 0: #If it's bbc...
-				substringToKeep = "" #delete the first index bc its just a bunch of javascript
-
-			urlContent_ready.append(substringToKeep)
-	del urlContent_raw #save some memory
-	# print (urlContent_ready)
-	if len(urlContent_ready) == 0:
-		return ("BAD REQUEST\t\tNo content matched the criteria to push to temp_processing_text.txt.")
-
-	#Push to temp_processing_text.txt
+	if not urlContent_raw:
+		print("Warning: no content downloaded to temp_preprocessing_text.txt.")
+	urlContent_ready = parseHtml(urlContent_raw, sourceToLoad)
+	# push content to temp_processing_text.txt
 	with open(absolute_filepath+'/temp_processing_text.txt', 'w', encoding='utf-8') as f:
-	    for i in range (0,len(urlContent_ready)):
+	    for i in range(len(urlContent_ready)):
 		    f.write(urlContent_ready[i])
-	del urlContent_ready #save some memory
-def loadText(textToLoad):
+def loadText(textToLoad): 
 	"""Push a string to temp_processing_text.txt.
 	This function is called by read(). It should not be called directly.
 	----------Dependencies:
 	import os, absolute_filepath
 
 	----------Parameters:
-	textToLoad
+	textToLoad (a string)
 
-	----------Returns:
+	----------Return:
 	None (data is pushed directly to temp_processing_text.txt)
 	"""
 	textToLoad = str(textToLoad)
-	textToLoad += "\n011001010110111001100100" #to make sure there is always at least one line in the txt file, so that doc can be saved.
-
-	#Empty temp_preprocessing_text.txt (because loadHtml does too).
+	# add at least one line, to ensure that the doc can be saved
+	textToLoad += "\n011001010110111001100100"
+	# empty temp_preprocessing_text.txt (because loadHtml does too).
 	with open(absolute_filepath+'/temp_preprocessing_text.txt', 'w', encoding='utf-8') as f:
 	    f.write("")
-
-	#Push textToLoad to temp_processing_text.txt
+	# write textToLoad to temp_processing_text.txt
 	with open(absolute_filepath+'/temp_processing_text.txt', 'w', encoding='utf-8') as f:
 	    f.write(textToLoad)
 def tokenize(source,title):
-	"""Pull text from temp_processing_text.txt, save its bag of terms and log having read it.
+	"""Pull text from temp_processing_text.txt and save its bag of terms to the list urlContent_raw.
 	----------Dependencies:
-	temp_processing_text.txt (in this script's directory). This is the text that gets tokenized.
+	temp_processing_text.txt (in this script's directory). This is the 
+		text that gets tokenized.
 	my_corpus (folder in this script's directory)
 	import os, absolute_filepath (global variable)
 	generateUuid()
@@ -242,80 +239,78 @@ def tokenize(source,title):
 	source (a string)
 	title (a string)
 
-	----------Returns:
+	----------Return:
 	None
 	"""
-	#Pull text from temp_processing_text.txt
+	# pull text from temp_processing_text.txt
 	textToTokenize = ""
-	with open ('temp_processing_text.txt', 'r', encoding="utf8") as f:
-	    for line in f: #For each line of text, store in a string variable in the list urlContent_raw.
+	with open('temp_processing_text.txt', 'r', encoding="utf8") as f:
+	    for line in f:
 	    	textToTokenize += line+"\n"
-
-	#generate a unique key for this reading
+	# generate a unique key for this reading
 	docName = generateUuid()
-	#create the doc and metadata (because tokenization can't happen until the doc is created)
+	# create a doc and metadata so that tokenization can occur.
 	metadata = {
 	     'title': title,
 	     'source': source,
-	     'myKey' : docName} 
+	     'myKey' : docName}
 	doc = textacy.Doc(textToTokenize, metadata=metadata, lang="en") 
-
 	#create a json bag of terms. convert it to a python list.
-	docTermsJson = doc.to_bag_of_terms(ngrams=2, named_entities=True, normalize='lemma', as_strings=True)
+	docTermsJson = doc.to_bag_of_terms(
+		ngrams=2, 
+		named_entities=True, 
+		normalize='lemma', 
+		as_strings=True
+		)
 	docTerms = []
 	for key, value in docTermsJson.items():
 		docTerms.append([key,value])
-	del docTermsJson
-
-	#sort the list
+	# sort the list
 	docTerms = sortLists(docTerms,1,'largestToSmallest')
-
-	#Place terms with above-average frequency (>1 mentions) into primaryTerms. Place all terms into secondaryTerms.
+	# place all terms into secondaryTerms.
+	# place terms with above-average frequency (>1 mentions) into primaryTerms.
 	primaryTerms = []
 	secondaryTerms = []
-	for i in range (0,len(docTerms)):
+	for i in range(len(docTerms)):
 		if docTerms[i][1] > 1:
 			primaryTerms.append(docTerms[i][0])
 		secondaryTerms.append(docTerms[i][0])
-	# set title = the most common term (if any terms exist)
-	if len(docTerms) > 0:
-		title = docTerms[0][0] 
-	else:
-		title = 'Untitled'
-	#This is better than <h1> bc it is tokenized in the same way that the terms in other network nodes, are tokenized. But another option is to search through primaryTerms and find the first (or longest) one that matches the first line of temp_processing_text.txt, and use that term instead.
-	
-	#overwrite previous metadata now that there's a real title
+	# set title to the most common term (if any terms exist)
+	title = docTerms[0][0] if docTerms else 'Untitled'
+	# overwrite the previous metadata now that a better title exists
 	metadata = {
 	     'title': title,
 	     'source': source,
 	     'myKey' : docName} 
 	doc = textacy.Doc(textToTokenize, metadata=metadata, lang="en") 
-	
-	#save the doc
+	# save the doc
 	doc.save(absolute_filepath+'/my_corpus', name=docName)
-
-	#generate final list of all data/vectors
-	newTopic = [docName,knowledgePriorityLevel,title,[source],primaryTerms,secondaryTerms,False]
-
-	# update topics_known.py
-	newTopic = str(newTopic)+","+"\n] # the last line in the file must be a ]." # add ] to newTopic
+	# generate final list of all data/vectors
+	newTopic = [
+		docName,
+		knowledgePriorityLevel,
+		title,
+		[source],
+		primaryTerms,
+		secondaryTerms,
+		False
+	]
+	# update topics_known.py with latest topic read
+	newTopic = str(newTopic)+","+"\n]"
 	lines = open(absolute_filepath+'/topics_known.py', encoding="utf8").readlines()
 	open(absolute_filepath+'/topics_known.py', encoding="utf8").close()
 	w = open(absolute_filepath+'/topics_known.py','w', encoding="utf8")
-	w.writelines([item for item in lines[:-1]]) #delete the last line of the file
+	# delete the last line of the file
+	w.writelines([item for item in lines[:-1]])
 	w.close()
-	#add newTopic as the last 2 lines of the file
-	with open(absolute_filepath+'/topics_known.py', 'a', encoding="utf8") as f: #a means append
+	# add newTopic as the last 2 lines of the file
+	with open(absolute_filepath+'/topics_known.py', 'a', encoding="utf8") as f:
 	    f.write(newTopic)
-	#update the global variable 'topicsKnown'
+	# update the global variable 'topicsKnown'
 	updateTopicsKnown()
-
-	# #save the name of this reading (docName) in the file table_of_contents.txt
-	# with open(absolute_filepath+'/my_corpus/table_of_contents.txt', 'a') as f: #a means append
-	#     f.write('\n'+docName)
-	print ("I've finished reading about %s." % title)
+	print("Finished reading about %s." % title)
 def read(readRequest):
-	"""Use the format of a read request, to detrmine the reading's content and metadata. Then call a function to read it.
+	"""Determine a reading's content and metadata. Call a function to read it.
 	----------Dependencies:
 	tokenize()
 		generateUuid ()
@@ -323,8 +318,8 @@ def read(readRequest):
 	----------Parameters:
 	readRequest
 
-	----------Returns:
-	True: if it executes the whole function successfully.
+	----------Return:
+	True.
 	The learned data is saved directly to topics_known.txt and to /my_corpus
 	"""
 	sourceToRead = None
@@ -332,14 +327,13 @@ def read(readRequest):
 	titleToRead = None
 	urlToRead = None
 	requiresHtmlParse = None
-
 	if readRequest[:9] == 'read http':
-		#determine source
-		wiki = None #if it's wikipedia, then it's wikipedia
+		# determine the source of a reading
 		if readRequest.find("wikipedia.") > 0:
 			sourceToRead = "wikipedia"
-		else: #if it's not wikipedia, then the source is the domain name
-			sourceToRead = readRequest[5:] #remove the word 'read '
+		else: 
+			# set the domain name as the source
+			sourceToRead = readRequest[5:] # remove the word 'read '
 			if sourceToRead[:4] == "http":
 				startPos = 3 + re.search("://", sourceToRead).start()
 			else:
@@ -347,80 +341,69 @@ def read(readRequest):
 			sourceToRead = sourceToRead[startPos:]
 			periodPos = re.search("\.", sourceToRead).start()
 			sourceToRead = sourceToRead[:periodPos]
-		#determine text (the content)
+		# set temporary doc metadata values since tokenization hasn't yet occured.
 		textToRead = None
-		#title wont be determined until text is tokenized
 		titleToRead = "Unknown"
 		requiresHtmlParse = True
-		#determine urlToRead
-		urlToRead = readRequest[5:] #everything after 'read '
-		print ("I will try to read the following:")
+		# keep everything after 'read '
+		urlToRead = readRequest[5:] 
+		print("I will try to read the following:")
 
 	elif readRequest[:15] == 'read this from ':
-		#determine source
 		sourceToRead = readRequest[15:]
 		colonPos = re.search(":", sourceToRead).start()
 		sourceToRead = sourceToRead[:10]
-		#determine text (the content)
-		textToRead = re.split("read this from .*:", readRequest)
-		textToRead = textToRead[1]
-		titleToRead = 'Unknown' #final title wont be determined until text is tokenized
+		textToRead = re.split("read this from .*:", readRequest)[1]
+		titleToRead = 'Unknown'
 		requiresHtmlParse = False
-		print ("I will try to read the following:")
+		print("Trying to read the following:")
 
 	else:
 		sourceToRead = 'Unknown'
-		#determine text (the content)
 		textToRead = readRequest[5:]
-		titleToRead = 'Unknown' #final title wont be determined until text is tokenized
+		titleToRead = 'Unknown'
 		requiresHtmlParse = False
-		print ("I will try to read the following:")
+		print("Trying to read the following:")
 
+	print("\tsourceToRead:",sourceToRead)
+	print("\ttextToRead:",textToRead)
+	print("\ttitleToRead:",titleToRead)
+	print("\turlToRead:",urlToRead)
+	print("\trequiresHtmlParse:",requiresHtmlParse)
 
-
-	print ("\tsourceToRead:",sourceToRead)
-	print ("\ttextToRead:",textToRead)
-	print ("\ttitleToRead:",titleToRead)
-	print ("\turlToRead:",urlToRead)
-	print ("\trequiresHtmlParse:",requiresHtmlParse)
-
-	if requiresHtmlParse == True:
-		loadHtml(urlToRead,sourceToRead) #load content into temp_processing_text.txt and save doc/metadata to my_corpus
-		tokenize(sourceToRead,titleToRead) #tokenize temp_processing_text.txt
-		return True
+	# load content into temp_processing_text.txt and 
+	# save doc/metadata to my_corpus
+	if requiresHtmlParse:
+		loadHtml(urlToRead,sourceToRead) 
 	else:
-		loadText(textToRead) #load content into temp_processing_text.txt and save doc/metadata to my_corpus
-		tokenize(sourceToRead,titleToRead) #tokenize temp_processing_text.txt
-		return True
+		loadText(textToRead) 
+	tokenize(sourceToRead,titleToRead)
+	return True
 
-
-
-
-#{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
-#{}
-#{}	@@		Main Loop
-#{}
-#{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+# main loop
 updateTopicsKnown()
-
 readingLoop = True
 while readingLoop == True:
 	inputParsed = False
 	print("\n\nAVAILABLE COMMANDS: \n\t'read' (e.g. read https://en.wikipedia.org/wiki/Carpinus_betulus)\n\t'read this from source: paragraph' (e.g. read this from wikipedia: A folksinger or folk singer is a person who sings folk music.)\n\t'exit'")
 	readingLoop_input = input('--> ')
-
-	#if readingLoop_input starts with read
+	# if readingLoop_input starts with read
 	if readingLoop_input[:5] == 'read ':
 		readingSuccess = False
 		inputParsed = True
 		read(readingLoop_input)
-
-	#exit the main loop
+	# exit the main loop
 	if readingLoop_input == 'exit' or readingLoop_input == 'abort':
 		inputParsed = True
+		# clear the contents of the two temporary .txt files
+		with open(absolute_filepath + \
+			'/temp_preprocessing_text.txt', 'w', encoding='utf-8') as f:
+		    f.write("")
+		with open(absolute_filepath + \
+			'/temp_processing_text.txt', 'w', encoding='utf-8') as f:
+			f.write("")
 		readingLoop = False
-	
-	#handle syntax errors
+	# handle syntax errors
 	if inputParsed == False:
-		print ("I don't understand '%s'." % readingLoop_input)
+		print("I don't understand '%s'." % readingLoop_input)
 print("===== Exiting Script =====")
